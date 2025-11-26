@@ -1,21 +1,46 @@
-version: "3.8"
-
 services:
-
-  # Servicio 1: El Frontend (nuestra API principal)
-  frontend-api:
-    build: ./frontend-api  # Construye desde la carpeta ./frontend-api
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
     ports:
-      - "5000:5000"      # Expone el puerto 5000 a tu máquina local
-    depends_on:          # Espera a que los otros se inicien primero
-      - backend-data
-      - db-cache
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - red_cuenca
 
-  # Servicio 2: El Backend (API interna)
-  backend-data:
-    build: ./backend-data  # Construye desde la carpeta ./backend-data
-    # No necesita 'ports' porque solo el 'frontend-api' habla con él
+  productor:
+    build: ./sensores      
+    container_name: productor_sensores
+    volumes:
+      - ./sensores:/app     
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - red_cuenca
 
-  # Servicio 3: La Base de Datos (Caché)
-  db-cache:
-    image: redis:alpine    # Usa una imagen pública de Redis (no necesita build)
+  procesador:
+    build: ./consumidores   
+    container_name: procesador_alertas
+    volumes:
+      - ./consumidores:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - red_cuenca
+  websocket:
+    build: ./websocket_server
+    container_name: websocket_server
+    ports:
+      - "9000:9000"
+    networks:
+      - red_cuenca
+networks:
+  red_cuenca:
+    driver: bridge
